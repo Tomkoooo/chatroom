@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Szoba</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script defer src="script.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #6e7aeb, #abc4fd);
+            margin: 0;
+            padding: 0;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            text-align: center;
+        }
+        h2 {
+            font-size: 2em;
+            margin-bottom: 20px;
+        }
+        #login, #chat {
+            width: 90%;
+            max-width: 800px;
+            margin: 20px;
+            padding: 20px;
+            border-radius: 10px;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        #messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: rgba(255, 255, 255, 0.2);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+        }
+        #messages p {
+            margin: 5px 0;
+        }
+        .message-bubble {
+            display: inline-block;
+            padding: 10px;
+            border-radius: 15px;
+            margin: 5px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+        .sender {
+            background-color: #abc4fd;
+            text-align: left;
+        }
+        .receiver {
+            background-color: #6e7aeb;
+            color: #fff;
+            text-align: right;
+        }
+        input {
+            width: 80%;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            background: #fff;
+            margin-bottom: 10px;
+        }
+        button {
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #6e7aeb;
+            border: none;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #4a56e2;
+        }
+        .user {
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+        .online-users {
+            display: flex;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .online-users img {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            margin: 5px;
+            cursor: pointer;
+        }
+        .online-users img:hover {
+            opacity: 0.7;
+        }
+        .toast {
+            background-color: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 10px;
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-radius: 5px;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        .avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        .logout-btn {
+            background-color: #ff6b6b;
+            margin-top: 10px;
+            display: inline-block;
+        }
+        #usercount {
+            margin-bottom: 10px;
+        }
+        #userlist {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #typingStatus {
+            font-size: 0.9em;
+            color: #ccc;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Élő Chat Szoba</h2>
+    
+    <!-- Login Section -->
+    <div id="login">
+        <form id="login-form" onsubmit="joinChat(event)">
+            <input type="text" id="username" placeholder="Add meg a neved" required>
+            <button type="submit">Csatlakozás</button>
+        </form>
+    </div>
+
+    <!-- Chat Section -->
+    <div id="chat" style="display: none;">
+        <div id="userlist">
+            <div id="usercount">0 Online</div>
+            <div id="onlineUsers" class="online-users"></div>
+        </div>
+        <div id="messages"></div><div id="typingStatus" style="display: flex; margin-top: auto; margin-bottom: 1rem;"></div>
+        <form id="message-form" onsubmit="sendMessage(event)">
+            <input type="text" id="message" placeholder="Írj egy üzenetet..." oninput="startTyping()" required>
+            <button type="submit">Küldés</button>
+        </form>
+        <button class="logout-btn" onclick="logout()">Kijelentkezés</button>
+        
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        const socket = io();
+        let username;
+        let typingUsers = [];
+
+        // Join Chat
+        function joinChat(event) {
+            event.preventDefault();
+            username = document.getElementById("username").value.trim();
+            if (!username) {
+                alert("Adj meg egy nevet!");
+                return;
+            }
+            socket.emit("join", username);
+        }
+
+        // Update user list
+        socket.on("userlist", (users) => {
+            document.getElementById("login").style.display = "none";
+            document.getElementById("chat").style.display = "block";
+            const userlist = document.getElementById("userlist");
+            document.getElementById("usercount").innerText = users.length + " Online";
+
+            // Display avatars of online users
+            const onlineUsersContainer = document.getElementById("onlineUsers");
+            onlineUsersContainer.innerHTML = '';
+            users.forEach(user => {
+                const userAvatar = document.createElement('img');
+                userAvatar.src = `https://avatar.iran.liara.run/username?username=${user}`;
+                userAvatar.title = user;
+                userAvatar.alt = user;
+                userAvatar.classList.add('avatar');
+                userAvatar.addEventListener('mouseenter', () => showTooltip(userAvatar, user));
+                onlineUsersContainer.appendChild(userAvatar);
+            });
+        });
+
+        // Show tooltip
+        function showTooltip(element, name) {
+            const tooltip = document.createElement('div');
+            tooltip.innerText = name;
+            tooltip.style.position = 'absolute';
+            tooltip.style.top = element.offsetTop + 'px';
+            tooltip.style.left = element.offsetLeft + 'px';
+            tooltip.style.backgroundColor = '#444';
+            tooltip.style.padding = '5px';
+            tooltip.style.borderRadius = '5px';
+            document.body.appendChild(tooltip);
+            setTimeout(() => document.body.removeChild(tooltip), 1500);
+        }
+
+        // Display messages
+        socket.on("message", (data) => {
+            const messages = document.getElementById("messages");
+            const messageBubble = document.createElement('p');
+            const avatar = `<img src="https://avatar.iran.liara.run/username?username=${data.user}" class="avatar">`;
+
+            const messageText = data.text.text || ""; // Handle object issue
+            if (data.name === username) {
+                messageBubble.style.marginLeft = "auto";
+                messageBubble.style.display = "flex";
+                messageBubble.style.flexDirection = "row-reverse";
+                messageBubble.style.alignItems = "center";
+                messageBubble.style.position = "relative";
+                messageBubble.innerHTML = `<label style="position: absolute; top:-20px; rigth:0; display: flex; gap: 15px; align-items: center;">${data.name}${avatar}</label><span class="message-bubble sender"style="display:flex; flex-direction: row-reverse;
+    align-items: center;
+    gap: 15px;">${messageText}</span>`;
+            } else {
+                messageBubble.style.marginRight = "auto";
+                messageBubble.style.display = "flex";
+                messageBubble.style.flexDirection = "row";
+                messageBubble.style.alignItems = "center";
+                messageBubble.style.position = "relative";
+                messageBubble.innerHTML = `<label style="position: absolute; top:-20px; left:0; display: flex; gap: 15px; align-items: center;">${avatar}${data.name}</label><span class="message-bubble receiver"style="display:flex; flex-direction: row;
+    align-items: center;
+    gap: 15px;">${messageText}</span>`;
+            }
+            messages.appendChild(messageBubble);
+            messages.scrollTop = messages.scrollHeight;
+        });
+
+        function startTyping() {
+            socket.emit("typing", username);
+        }
+
+        // Show when someone is typing
+        socket.on("typing", (user) => {
+            if (!typingUsers.includes(user)) {
+                typingUsers.push(user);
+            }
+            updateTypingStatus();
+        });
+
+        socket.on("stopTyping", (user) => {
+            typingUsers = typingUsers.filter(u => u !== user);
+            updateTypingStatus();
+        });
+
+        // Update typing status
+        function updateTypingStatus() {
+            const typingStatus = typingUsers.length > 0
+                ? typingUsers.join(", ") + " gépel"
+                : '';
+            document.getElementById("typingStatus").innerText = typingStatus;
+        }
+
+        // Send message
+        function sendMessage(event) {
+            event.preventDefault();
+            const message = document.getElementById("message").value.trim();
+            if (message) {
+                socket.emit("message", { text: message, name: username });
+                document.getElementById("message").value = "";
+                socket.emit("stopTyping", username);
+            }
+        }
+
+        // Logout
+        function logout() {
+            socket.emit("logout", username);
+            document.getElementById("chat").style.display = "none";
+            document.getElementById("login").style.display = "block";
+            username = null;
+        }
+
+        // Frontend kód:
+        socket.on("userStatus", (data) => {
+            const { user, action } = data;
+            const message = action === 'join'
+                ? `${user} csatlakozott a csevegéshez!`
+                : action === 'leave'
+                    ? `${user} kilépett a csevegésből!`
+                    : action === 'inactive'
+                        ? `${user} inaktív státuszba került.`
+                        : `${user} aktív!`;
+            showToast(message);
+        });
+
+        // Toast üzenet megjelenítése
+        function showToast(message) {
+            const toast = document.getElementById("toast");
+            toast.innerText = message;
+            toast.style.display = "block";
+            toast.style.opacity = "1";
+            setTimeout(() => toast.style.opacity = "0", 3000);
+            setTimeout(() => toast.style.display = "none", 3500);
+        }
+    </script>
+</body>
+</html>
