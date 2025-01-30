@@ -223,9 +223,9 @@
         socket.on("message", (data) => {
             const messages = document.getElementById("messages");
             const messageBubble = document.createElement('p');
-            const avatar = `<img src="https://avatar.iran.liara.run/username?username=${data.user}" class="avatar">`;
+            const avatar = `<img src="https://avatar.iran.liara.run/username?username=${data.name}" class="avatar">`;
 
-            const messageText = data.text.text || ""; // Handle object issue
+            const messageText = data.text.text || data.text || ""; // Handle object issue
             if (data.name === username) {
                 messageBubble.style.marginLeft = "auto";
                 messageBubble.style.display = "flex";
